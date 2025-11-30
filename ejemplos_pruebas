@@ -1,0 +1,41 @@
+1. INSERTS para ingredientes
+INSERT INTO ingredientes (id_ingredientes, nombre, stock_minimo, stock_actual, costo_unitario, unidad_medida) VALUES
+(1, 'Harina 0000', 5, 20, 500.00, 'kg'),
+(2, 'Azúcar', 5, 15, 450.00, 'kg'),
+(3, 'Huevo', 30, 120, 50.00, 'unidad'),
+(4, 'Manteca', 3, 10, 1200.00, 'kg'),
+(5, 'Chocolate cobertura', 2, 8, 2500.00, 'kg'),
+(6, 'Crema', 5, 12, 900.00, 'litro');
+
+2. INSERTS para producto
+INSERT INTO producto (id_producto, nombre, stock, categoria, tiempo_preparacion, precio, descripcion, id_ingredientes) VALUES
+(1, 'Torta de Chocolate', 10, 'Tortas', 60, 8500.00, 'Torta húmeda de chocolate', 5),
+(2, 'Alfajores de Maicena (docena)', 15, 'Alfajores', 40, 2500.00, 'Clásicos con dulce de leche', 1),
+(3, 'Budín de Vainilla', 8, 'Budines', 50, 1800.00, 'Budín casero suave', 1),
+(4, 'Brownies', 12, 'Postres', 45, 3000.00, 'Brownies de chocolate intenso', 5),
+(5, 'Lemon Pie', 6, 'Tartas', 55, 4200.00, 'Lemon Pie con merengue italiano', 6);
+
+3. INSERTS para cliente
+INSERT INTO cliente (id_cliente, nombre, apellido, telefono, direccion) VALUES
+(1, 'María', 'Gómez', 1122334455, 'Av. Siempre Viva 123'),
+(2, 'Jorge', 'Silva', 1144556677, 'Calle Falsa 456'),
+(3, 'Ana', 'Martínez', 1133445566, 'San Martín 789');
+
+4. INSERTS para pedido
+INSERT INTO pedido (id_pedido, metodo_de_pago, estado, fecha_entrega, fecha_pedido, id_cliente) VALUES
+(1, 1, 'Pendiente', '2025-11-30', '2025-11-28', 1),
+(2, 2, 'En preparación', '2025-12-02', '2025-11-29', 2),
+(3, 1, 'Entregado', '2025-11-25', '2025-11-23', 3);
+
+5. INSERTS para decoracion_perzonalizada
+INSERT INTO decoracion_perzonalizada (id_decoracion, tipo, costo_extra, id_detallePedido) VALUES
+(1, 'Flores de azúcar', 1500.00, NULL),
+(2, 'Foto comestible', 2000.00, NULL),
+(3, 'Mensaje personalizado', 800.00, NULL);
+
+6. INSERTS para detalle_pedido
+INSERT INTO detalle_pedido (id_detallePedido, precio_unitario, cantidad, subtotal, id_producto, id_pedido, id_decoracion) VALUES
+(1, 8500.00, 1, 8500, 1, 1, 1),
+(2, 2500.00, 2, 5000, 2, 2, NULL),
+(3, 3000.00, 1, 3000, 4, 3, 3),
+(4, 4200.00, 1, 4200, 5, 2, 2);
