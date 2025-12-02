@@ -62,6 +62,3 @@ else:
 
         case _:
             print("Opción no válida.")
-
-    
-
