@@ -9,10 +9,13 @@ Interfaz gráfica moderna usando customtkinter
 import customtkinter as ctk #Importa la librería de interfaz gráfica moderna. El as ctk es un alias para escribir menos
 from tkinter import messagebox #Importa los cuadros de diálogo (alertas, confirmaciones) del tkinter estándar
 import sys #Para poder cerrar el programa completamente con sys.exit()
+from consultor import VentanaConsultor
+
 
 # Configuración de apariencia
 ctk.set_appearance_mode("dark")  # "dark" o "light" o "system", sirve para cambiar el modo de apariencia (system usa la configuración del sistema operativo)
 ctk.set_default_color_theme("blue")  #Define el color principal de los botones y elementos. Opciones: "blue", "green", "dark-blue"
+
 
 
 class MenuPrincipal(ctk.CTk):
@@ -81,7 +84,7 @@ class MenuPrincipal(ctk.CTk):
         btn_inventario = ctk.CTkButton(
             botones_frame,
             text="📊 Control de Inventario",
-            command=self.abrir_inventario,
+            command=lambda: VentanaConsultor(self, table_name='ingredientes'), # abrir ventana del consultor y cargar tabla
             height=50,
             font=ctk.CTkFont(size=16),
             corner_radius=10
@@ -172,9 +175,8 @@ class MenuPrincipal(ctk.CTk):
     
     def abrir_reportes(self):
         """Abrir módulo de reportes"""
-        messagebox.showinfo("Reportes", "Módulo de Reportes\n(Por implementar)")
-        # from reportes import VentanaReportes
-        # VentanaReportes(self)
+        from consultor import VentanaConsultor
+        ventana = VentanaConsultor(self, table_name='cliente')
     
     def abrir_configuracion(self):
         """Abrir configuración"""
