@@ -42,6 +42,22 @@ class Consultor:
         """
         return self._ejecutar_consulta(query, (f"%{nombre}%",))
 
+    def ingrediente_existe(self, nombre: str) -> bool:
+        """Verifica si un ingrediente con ese nombre ya existe."""
+        query = "SELECT id_ingredientes FROM ingredientes WHERE nombre = %s"
+        resultado = self._ejecutar_consulta(query, (nombre,))
+        return len(resultado) > 0
+
+    def obtener_todos_con_nombre(self, nombre: str) -> list:
+        """Obtiene todos los ingredientes con un nombre dado (puede haber duplicados)."""
+        query = """
+            SELECT id_ingredientes, nombre, stock_actual, unidad_medida, costo_unitario, stock_minimo
+            FROM ingredientes 
+            WHERE nombre = %s
+            ORDER BY id_ingredientes
+        """
+        return self._ejecutar_consulta(query, (nombre,))
+
     def obtener_todos_los_ingredientes(self) -> List[Dict]:
         """Carga inicial de todo el inventario."""
         query = "SELECT id_ingredientes, nombre, stock_actual, unidad_medida FROM ingredientes"

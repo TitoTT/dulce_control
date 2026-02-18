@@ -93,6 +93,86 @@ BEGIN
     WHERE id_ingredientes = p_id_ingredientes;
 END;
 
+
+CREATE TABLE movimientos_inventario (
+    id_movimiento INT AUTO_INCREMENT PRIMARY KEY,
+    id_producto INT NOT NULL,
+    tipo ENUM('entrada', 'salida') NOT NULL,
+    cantidad INT NOT NULL,
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (id_producto) REFERENCES producto(id_producto)
+) ENGINE=InnoDB;
+
+SHOW CREATE TABLE movimientos_inventario;
+
+DELIMITER //
+
+CREATE PROCEDURE registrar_entrada_producto(
+    IN p_id_producto INT,
+    IN p_cantidad INT
+)
+BEGIN
+    -- Aumentar stock
+    UPDATE producto
+    SET stock = stock + p_cantidad
+    WHERE id_producto = p_id_producto;
+
+    -- Registrar movimiento
+    INSERT INTO movimientos_inventario (id_producto, tipo, cantidad)
+    VALUES (p_id_producto, 'entrada', p_cantidad);
+END //
+
+DELIMITER ;
+
+DELIMITER //
+
+CREATE PROCEDURE registrar_salida_producto(
+    IN p_id_producto INT,
+    IN p_cantidad INT
+)
+BEGIN
+    DECLARE stock_actual INT;
+
+    -- Obtener stock actual
+    SELECT stock INTO stock_actual
+    FROM producto
+    WHERE id_producto = p_id_producto;
+
+    -- Validar que haya stock suficiente
+    IF stock_actual >= p_cantidad THEN
+
+        UPDATE producto
+        SET stock = stock - p_cantidad
+        WHERE id_producto = p_id_producto;
+
+        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad)
+        VALUES (p_id_producto, 'salida', p_cantidad);
+
+    ELSE
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Stock insuficiente';
+    END IF;
+
+END //
+
+DELIMITER ;
+
+CALL registrar_entrada_producto(1, 10);
+CALL registrar_salida_producto(1, 5);
+SELECT 
+    m.id_movimiento,
+    p.nombre,
+    m.tipo,
+    m.cantidad,
+    m.fecha
+FROM movimientos_inventario m
+JOIN producto p ON m.id_producto = p.id_producto
+ORDER BY m.fecha DESC;
+
+
+SHOW CREATE TABLE productos;
+
+
 INSERT INTO ingredientes (nombre, stock_minimo, stock_actual, costo_unitario, unidad_medida) VALUES
 ('Harina de Trigo', 5000, 100, 0.05, 'gramos'),
 ('Azúcar Blanca', 3000, 8500, 0.03, 'gramos'),
