@@ -11,6 +11,17 @@ create table ingredientes(
     unidad_medida varchar(50) not null
 );
 
+CREATE TABLE movimientos_ingredientes (
+    id_movimiento INT AUTO_INCREMENT PRIMARY KEY,
+    id_ingredientes INT NOT NULL,
+    tipo ENUM('entrada','salida') NOT NULL,
+    cantidad DECIMAL(10,2) NOT NULL,
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+    observaciones VARCHAR(255),
+    FOREIGN KEY (id_ingredientes) REFERENCES ingredientes(id_ingredientes)
+) ENGINE=InnoDB;
+
+
 create table producto(
 	id_producto int primary key auto_increment not null,
     nombre varchar(150) not null,
@@ -168,6 +179,32 @@ SELECT
 FROM movimientos_inventario m
 JOIN producto p ON m.id_producto = p.id_producto
 ORDER BY m.fecha DESC;
+
+SELECT 
+    'Ingrediente' AS tipo_entidad,
+    i.nombre AS nombre,
+    mi.tipo,
+    mi.cantidad,
+    mi.fecha,
+    mi.observaciones
+FROM movimientos_ingredientes mi
+JOIN ingredientes i ON mi.id_ingredientes = i.id_ingredientes
+WHERE mi.fecha >= CURDATE() - INTERVAL 30 DAY
+
+UNION ALL
+
+SELECT 
+    'Producto' AS tipo_entidad,
+    p.nombre AS nombre,
+    mp.tipo,
+    mp.cantidad,
+    mp.fecha,
+    NULL AS observaciones
+FROM movimientos_inventario mp
+JOIN producto p ON mp.id_producto = p.id_producto
+WHERE mp.fecha >= CURDATE() - INTERVAL 30 DAY
+
+ORDER BY fecha DESC;
 
 
 SHOW CREATE TABLE productos;

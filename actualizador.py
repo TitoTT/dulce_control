@@ -38,6 +38,26 @@ class Actualizador:
 
             cursor = connection.cursor()
             cursor.execute(query, valores_finales)
+            # Si se actualiza la tabla ingredientes y stock_actual cambió, registrar movimiento
+            if tabla == "ingredientes":
+                nuevo_stock = nuevos_valores[columnas.index("stock_actual")]
+                if nuevo_stock is not None:
+                    cursor.execute(
+                        """INSERT INTO movimientos_ingredientes (id_ingredientes, tipo, cantidad, observaciones)
+                            VALUES (%s, 'entrada', %s, %s)""",
+                        (pk_valor, nuevo_stock, "Actualización manual de stock")
+                    )
+
+            # Si se actualiza la tabla producto y stock cambió, registrar movimiento
+            if tabla == "producto":
+                nuevo_stock = nuevos_valores[columnas.index("stock")]
+                if nuevo_stock is not None:
+                    cursor.execute(
+                        """INSERT INTO movimientos_inventario (id_producto, tipo, cantidad)
+                        VALUES (%s, 'entrada', %s)""",
+                        (pk_valor, nuevo_stock)
+                    )
+
             connection.commit()
 
             if cursor.rowcount > 0:

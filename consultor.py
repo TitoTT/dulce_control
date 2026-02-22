@@ -30,8 +30,69 @@ class Consultor:
             self.conexion.cerrar()
             
         return resultados
+    ##########################################################################################################################################################################
 
-    # --- MÉTODOS PARA EL INVENTARIO ---
+    def obtener_pedidos(self, estado: str = "todos") -> List[Dict]:
+        """Trae todos los pedidos con cliente y monto total."""
+        if estado == "todos":
+            where = ""
+            params = None
+        else:
+            where = "WHERE p.estado = %s"
+            params = (estado,)
+        query = f"""
+            SELECT 
+                p.id_pedido,
+                CONCAT(c.nombre, ' ', c.apellido) AS cliente,
+                p.estado,
+                p.fecha_pedido,
+                p.fecha_entrega,
+                p.metodo_de_pago,
+                SUM(dp.subtotal) AS total
+            FROM pedido p
+            JOIN cliente c ON p.id_cliente = c.id_cliente
+            JOIN detalle_pedido dp ON dp.id_pedido = p.id_pedido
+            {where}
+            GROUP BY p.id_pedido, c.nombre, c.apellido, p.estado,
+                     p.fecha_pedido, p.fecha_entrega, p.metodo_de_pago
+            ORDER BY p.id_pedido DESC
+        """
+        return self._ejecutar_consulta(query, params)
+
+    def obtener_items_pedido(self, id_pedido: int) -> List[Dict]:
+        """Trae los productos de un pedido específico."""
+        query = """
+            SELECT 
+                pr.nombre AS producto,
+                dp.cantidad,
+                dp.precio_unitario,
+                dp.subtotal
+            FROM detalle_pedido dp
+            JOIN producto pr ON dp.id_producto = pr.id_producto
+            WHERE dp.id_pedido = %s
+        """
+        return self._ejecutar_consulta(query, (id_pedido,))
+
+    def cambiar_estado_pedido(self, id_pedido: int, nuevo_estado: str) -> bool:
+        """Actualiza el estado de un pedido."""
+        connection = self.conexion.conectar()
+        if not connection:
+            return False
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE pedido SET estado = %s WHERE id_pedido = %s",
+                    (nuevo_estado, id_pedido)
+                )
+                connection.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"❌ Error al cambiar estado: {e}")
+            return False
+        finally:
+            self.conexion.cerrar()
+
+    # --- MÉTODOS PARA EL INVENTARIO ---###---###---###---###---###---###---###---###---###---###---###---################################################################
 
     def buscar_ingrediente_para_gui(self, nombre: str) -> List[Dict]:
         """Busca ingredientes por nombre para la tabla del menú visual."""
@@ -63,7 +124,64 @@ class Consultor:
         query = "SELECT id_ingredientes, nombre, stock_actual, unidad_medida FROM ingredientes"
         return self._ejecutar_consulta(query)
 
-    # --- MÉTODOS PARA EL DASHBOARD ---
+    def listar_tablas(self) -> List[str]:
+        """Devuelve la lista de tablas presentes en la base de datos."""
+        connection = self.conexion.conectar()
+        if connection is None:
+            return []
+
+        tablas = []
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute('SHOW TABLES')
+                rows = cursor.fetchall() or []
+                for row in rows:
+                    # row puede ser una tupla como ('tabla',) o un dict dependiendo del cursor
+                    if isinstance(row, (list, tuple)):
+                        tablas.append(row[0])
+                    elif isinstance(row, dict):
+                        tablas.append(list(row.values())[0])
+                    else:
+                        tablas.append(str(row))
+        except Exception as e:
+            print(f"❌ Error al listar tablas: {e}")
+        finally:
+            self.conexion.cerrar()
+
+        return tablas
+    
+    def obtener_ultimas_ventas(self, limite: int = 20) -> List[Dict]:
+        """Trae las últimas ventas con cliente, productos, monto y método de pago."""
+        query = """
+            SELECT 
+                p.id_pedido,
+                CONCAT(c.nombre, ' ', c.apellido) AS cliente,
+                p.metodo_de_pago,
+                p.fecha_pedido,
+                SUM(dp.subtotal) AS total
+            FROM pedido p
+            JOIN cliente c ON p.id_cliente = c.id_cliente
+            JOIN detalle_pedido dp ON dp.id_pedido = p.id_pedido
+            GROUP BY p.id_pedido, c.nombre, c.apellido, p.metodo_de_pago, p.fecha_pedido
+            ORDER BY p.id_pedido DESC
+            LIMIT %s
+        """
+        return self._ejecutar_consulta(query, (limite,))
+    ##################################################################################################################################################################
+
+    def obtener_receta_producto(self, id_producto: int) -> List[Dict]:
+        """Trae los ingredientes y cantidades de la receta de un producto."""
+        query = """
+            SELECT r.id_receta, i.nombre AS ingrediente, 
+                   r.cantidad_requerida, i.unidad_medida
+            FROM recetas r
+            JOIN ingredientes i ON r.id_ingredientes = i.id_ingredientes
+            WHERE r.id_producto = %s
+            ORDER BY i.nombre
+        """
+        return self._ejecutar_consulta(query, (id_producto,))
+
+    # --- MÉTODOS PARA EL DASHBOARD ---#######################################################################################################################################
 
     def obtener_pedidos_hoy(self) -> List[Dict]:
         """Trae los pedidos que vencen hoy para las alertas del Dashboard."""
@@ -81,18 +199,105 @@ class Consultor:
         query = "SELECT COUNT(*) as total FROM ingredientes WHERE stock_actual <= stock_minimo"
         res = self._ejecutar_consulta(query)
         return res[0]['total'] if res else 0
+    
+    def obtener_movimientos_recientes(self, dias: int = 30) -> List[Dict]:
+        """
+        Obtiene todos los movimientos de insumos y productos en los últimos 'dias' días.
+        Retorna una lista de diccionarios con los datos.
+        """
+        query = f"""
+            SELECT 
+                'Ingrediente' AS tipo_entidad,
+                i.nombre AS nombre,
+                mi.tipo,
+                mi.cantidad,
+                mi.fecha,
+                mi.observaciones
+            FROM movimientos_ingredientes mi
+            JOIN ingredientes i ON mi.id_ingredientes = i.id_ingredientes
+            WHERE mi.fecha >= CURDATE() - INTERVAL {dias} DAY
 
-    # --- MÉTODOS PARA CLIENTES ---
+            UNION ALL
+
+            SELECT 
+                'Producto' AS tipo_entidad,
+                p.nombre AS nombre,
+                mp.tipo,
+                mp.cantidad,
+                mp.fecha,
+                NULL AS observaciones
+            FROM movimientos_inventario mp
+            JOIN producto p ON mp.id_producto = p.id_producto
+            WHERE mp.fecha >= CURDATE() - INTERVAL {dias} DAY
+
+            ORDER BY fecha DESC;
+        """
+        return self._ejecutar_consulta(query)
+
+
+    # --- MÉTODOS PARA CLIENTES ---########################################################################################################################################
+
+    def obtener_todos_los_clientes(self) -> List[Dict]:
+        query = """
+            SELECT id_cliente, nombre, apellido, dni, telefono, direccion, 
+                   created_at
+            FROM cliente
+            ORDER BY apellido, nombre
+        """
+        return self._ejecutar_consulta(query)
+
+    def obtener_detalle_cliente(self, id_cliente: int) -> List[Dict]:
+        """Historial de pedidos y monto total de un cliente."""
+        query = """
+            SELECT 
+                p.id_pedido,
+                p.fecha_pedido,
+                p.fecha_entrega,
+                p.metodo_de_pago,
+                p.estado,
+                SUM(dp.subtotal) AS total
+            FROM pedido p
+            JOIN detalle_pedido dp ON dp.id_pedido = p.id_pedido
+            WHERE p.id_cliente = %s
+            GROUP BY p.id_pedido, p.fecha_pedido, p.fecha_entrega, 
+                     p.metodo_de_pago, p.estado
+            ORDER BY p.id_pedido DESC
+        """
+        return self._ejecutar_consulta(query, (id_cliente,))
 
     def buscar_cliente_por_dni(self, dni: str) -> List[Dict]:
         query = "SELECT * FROM cliente WHERE dni = %s"
         return self._ejecutar_consulta(query, (dni,))
 
-    # --- MÉTODOS PARA PRODUCTOS (NUEVA VENTA) ---
+    def buscar_cliente(self, termino: str) -> List[Dict]:
+        """Busca clientes por DNI exacto, o por nombre/apellido con LIKE."""
+        query = """
+            SELECT id_cliente, nombre, apellido, dni, telefono, direccion
+            FROM cliente
+            WHERE dni = %s
+               OR nombre LIKE %s
+               OR apellido LIKE %s
+               OR CONCAT(nombre, ' ', apellido) LIKE %s
+            ORDER BY apellido, nombre
+            LIMIT 20
+        """
+        like = f"%{termino}%"
+        return self._ejecutar_consulta(query, (termino, like, like, like))
+
+    # --- MÉTODOS PARA PRODUCTOS (NUEVA VENTA) ---#########################################################################################################################
 
     def obtener_catalogo_productos(self) -> List[Dict]:
         """Trae los productos disponibles para el punto de venta."""
         query = "SELECT id_producto, nombre, precio, categoria FROM producto"
+        return self._ejecutar_consulta(query)
+    
+    def obtener_todos_los_productos(self) -> List[Dict]:
+        query = """
+            SELECT id_producto, nombre, precio, stock, categoria, 
+                   tiempo_preparacion, descripcion
+            FROM producto
+            ORDER BY categoria, nombre
+        """
         return self._ejecutar_consulta(query)
 
     def obtener_detalle_pedido(self, id_pedido: int) -> List[Dict]:

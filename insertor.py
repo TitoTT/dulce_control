@@ -106,6 +106,20 @@ class Insertor:
                        WHERE nombre = %s""",
                     (nuevo_stock, unidad_medida, costo_unitario, stock_minimo, nombre)
                 )
+                # Registrar el movimiento
+                cursor.execute(
+                    "SELECT id_ingredientes FROM ingredientes WHERE nombre = %s",
+                    (nombre,)
+                )
+                resultado = cursor.fetchone()
+                if resultado:
+                    id_ing = resultado[0] if isinstance(resultado, tuple) else resultado.get('id_ingredientes')
+                    cursor.execute(
+                        """INSERT INTO movimientos_ingredientes 
+                           (id_ingredientes, tipo, cantidad, observaciones)
+                           VALUES (%s, 'entrada', %s, %s)""",
+                        (id_ing, stock_actual, "Reabastecimiento manual")
+                    )
                 conn.commit()
                 return True
         except Exception as e:
@@ -171,7 +185,12 @@ class Insertor:
                 if not resultado:
                     return False, f"El insumo con ID {id_ing} no existe"
                 
-                nombre = resultado[0] if isinstance(resultado, tuple) else resultado.get('nombre')
+                if isinstance(resultado, tuple):
+                    nombre = resultado[0]
+                elif isinstance(resultado, dict):
+                    nombre = resultado.get('nombre', '')
+                else:
+                    nombre = ''
                 
                 # Verificar si tiene recetas asociadas
                 cursor.execute("SELECT COUNT(*) as total FROM recetas WHERE id_ingredientes = %s", (id_ing,))
@@ -197,4 +216,145 @@ class Insertor:
             print(f"Error al eliminar ingrediente: {e}")
             return False, f"Error al eliminar: {str(e)}"
         finally:
+                self.conexion.cerrar()
+        
+    def insertar_producto(self, nombre, precio, stock, categoria, 
+                          tiempo_preparacion, descripcion) -> bool:
+        conn = self.conexion.conectar()
+        if not conn: return False
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO producto 
+                       (nombre, precio, stock, categoria, tiempo_preparacion, descripcion)
+                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                    (nombre, precio, stock, categoria, tiempo_preparacion or None, descripcion or None)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            conn.rollback()
+            print(f"Error al insertar producto: {e}")
+            return False
+        finally:
             self.conexion.cerrar()
+
+    def actualizar_producto(self, id_producto, nombre, precio, stock,
+                            categoria, tiempo_preparacion, descripcion) -> bool:
+        conn = self.conexion.conectar()
+        if not conn: return False
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """UPDATE producto SET nombre=%s, precio=%s, stock=%s, categoria=%s,
+                       tiempo_preparacion=%s, descripcion=%s
+                       WHERE id_producto=%s""",
+                    (nombre, precio, stock, categoria,
+                     tiempo_preparacion or None, descripcion or None, id_producto)
+                )
+                conn.commit()
+                return True
+        except Exception as e:
+            conn.rollback()
+            print(f"Error al actualizar producto: {e}")
+            return False
+        finally:
+            self.conexion.cerrar()
+
+    def eliminar_producto(self, id_producto: int) -> tuple:
+        conn = self.conexion.conectar()
+        if not conn: return False, "Error de conexión"
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT nombre FROM producto WHERE id_producto = %s", (id_producto,))
+                res = cursor.fetchone()
+                if not res:
+                    return False, "Producto no encontrado"
+                if isinstance(res, tuple):
+                    nombre = res[0]
+                elif isinstance(res, dict):
+                    nombre = res.get('nombre', '')
+                else:
+                    nombre = ''
+
+                # Verificar si tiene detalles de pedido asociados
+                cursor.execute(
+                    "SELECT COUNT(*) FROM detalle_pedido WHERE id_producto = %s", (id_producto,))
+                count = cursor.fetchone()
+                if isinstance(count, tuple):
+                    total = count[0]
+                elif isinstance(count, dict):
+                    total = count.get('COUNT(*)', 0)
+                else:
+                    total = 0
+                if total > 0:
+                    return False, f"No se puede eliminar '{nombre}': tiene {total} pedido(s) asociado(s)."
+
+                cursor.execute("DELETE FROM recetas WHERE id_producto = %s", (id_producto,))
+                cursor.execute("DELETE FROM producto WHERE id_producto = %s", (id_producto,))
+                conn.commit()
+                return True, f"Producto '{nombre}' eliminado correctamente."
+        except Exception as e:
+            conn.rollback()
+            return False, str(e)
+        finally:
+            self.conexion.cerrar()
+
+    def agregar_ingrediente_receta(self, id_producto: int, id_ingrediente: int,
+                                    cantidad: float) -> tuple:
+        conn = self.conexion.conectar()
+        if not conn: return False, "Error de conexión"
+        try:
+            with conn.cursor() as cursor:
+                # Verificar si ya existe ese ingrediente en la receta
+                cursor.execute(
+                    "SELECT id_receta FROM recetas WHERE id_producto=%s AND id_ingredientes=%s",
+                    (id_producto, id_ingrediente)
+                )
+                if cursor.fetchone():
+                    return False, "Ese ingrediente ya está en la receta. Editá la cantidad."
+                cursor.execute(
+                    """INSERT INTO recetas (id_producto, id_ingredientes, cantidad_requerida)
+                       VALUES (%s, %s, %s)""",
+                    (id_producto, id_ingrediente, cantidad)
+                )
+                conn.commit()
+                return True, "Ingrediente agregado a la receta."
+        except Exception as e:
+            conn.rollback()
+            return False, str(e)
+        finally:
+            self.conexion.cerrar()
+
+    def actualizar_cantidad_receta(self, id_receta: int, cantidad: float) -> tuple:
+        conn = self.conexion.conectar()
+        if not conn: return False, "Error de conexión"
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE recetas SET cantidad_requerida=%s WHERE id_receta=%s",
+                    (cantidad, id_receta)
+                )
+                conn.commit()
+                return True, "Cantidad actualizada."
+        except Exception as e:
+            conn.rollback()
+            return False, str(e)
+        finally:
+            self.conexion.cerrar()
+
+    def eliminar_ingrediente_receta(self, id_receta: int) -> tuple:
+        conn = self.conexion.conectar()
+        if not conn: return False, "Error de conexión"
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM recetas WHERE id_receta=%s", (id_receta,))
+                conn.commit()
+                return True, "Ingrediente eliminado de la receta."
+        except Exception as e:
+            conn.rollback()
+            return False, str(e)
+        finally:
+            self.conexion.cerrar()
+       
