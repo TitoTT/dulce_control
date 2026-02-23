@@ -26,6 +26,7 @@ class App(ctk.CTk):
         ctk.CTkButton(self.side, text="Inventario", command=self.vista_inv).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="VENDER", fg_color="green", command=self.vista_pos).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="🍬 Productos", command=self.vista_productos).pack(pady=5, padx=10)
+        ctk.CTkButton(self.side, text="📊 Reportes", command=self.vista_reportes).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="📋 Pedidos", command=self.vista_pedidos).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="👥 Clientes", command=self.vista_clientes).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="opciones", command=self.vista_opciones).pack(pady=5, padx=10)
@@ -35,6 +36,7 @@ class App(ctk.CTk):
         self.main.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.vista_dash()
 
+    #######################################################################################################################
     #ventana menu, aletas y acceso a las demas aopciones, estadisticas y otras cosas q tal vez agregue despues,
     #si es que me acuerdo, claro
     def vista_dash(self):
@@ -45,7 +47,21 @@ class App(ctk.CTk):
         alertas = self.consultor.contar_stock_bajo()
         f = ctk.CTkFrame(self.main, border_width=2, border_color="orange")
         f.pack(pady=(0, 10), padx=20, fill="x")
-        ctk.CTkLabel(f, text=f"⚠ Insumos con Stock Bajo: {alertas}", font=("Arial", 16)).pack(padx=20, pady=12)
+        ctk.CTkLabel(f, text=f"⚠ Insumos con Stock Bajo: {alertas}",
+                     font=("Arial", 16)).pack(padx=20, pady=(12, 4))
+
+        if alertas > 0:
+            stock_bajo = self.consultor.obtener_ingredientes_stock_bajo()
+            detalle_frame = ctk.CTkFrame(f, fg_color="transparent")
+            detalle_frame.pack(fill="x", padx=20, pady=(0, 10))
+            for ing in stock_bajo:
+                falta = float(ing['stock_minimo']) - float(ing['stock_actual'])
+                texto = (f"  • {ing['nombre']}:  "
+                         f"stock actual {ing['stock_actual']} {ing['unidad_medida']}  —  "
+                         f"mínimo {ing['stock_minimo']} {ing['unidad_medida']}  —  "
+                         f"faltan {falta:.1f} {ing['unidad_medida']}")
+                ctk.CTkLabel(detalle_frame, text=texto, anchor="w",
+                             text_color="orange").pack(fill="x", pady=1)
 
         # Últimas ventas
         ventas_frame = ctk.CTkScrollableFrame(self.main, label_text="🛒 Últimas ventas")
@@ -131,10 +147,30 @@ class App(ctk.CTk):
                          text_color="gray").pack(pady=20)
         else:
             for m in movimientos:
-                texto = f"[{m['fecha']}]  {m['tipo_entidad']}  {m['nombre']}  —  {m['tipo']}  {m['cantidad']}"
+                es_entrada = m['tipo'] == 'entrada'
+                color_tipo = "lightgreen" if es_entrada else "#ff6b6b"
+                icono = "⬆" if es_entrada else "⬇"
+
+                row = ctk.CTkFrame(mov_scroll)
+                row.pack(fill="x", pady=2, padx=2)
+                row.grid_columnconfigure(2, weight=1)
+
+                ctk.CTkLabel(row, text=str(m['fecha']), width=150,
+                             font=("Arial", 10), text_color="gray"
+                             ).grid(row=0, column=0, padx=8, pady=5, sticky="w")
+                ctk.CTkLabel(row, text=f"{icono} {m['tipo'].upper()}", width=80,
+                             text_color=color_tipo, font=("Arial", 11, "bold")
+                             ).grid(row=0, column=1, padx=4, pady=5)
+                ctk.CTkLabel(row, text=f"{m['tipo_entidad']}  —  {m['nombre']}",
+                             anchor="w"
+                             ).grid(row=0, column=2, padx=8, pady=5, sticky="w")
+                ctk.CTkLabel(row, text=f"{m['cantidad']}",
+                             text_color=color_tipo, font=("Arial", 11, "bold"), width=60
+                             ).grid(row=0, column=3, padx=8, pady=5)
                 if m['observaciones']:
-                    texto += f"  ({m['observaciones']})"
-                ctk.CTkLabel(mov_scroll, text=texto, anchor="w").pack(fill="x", padx=10, pady=2)
+                    ctk.CTkLabel(row, text=f"({m['observaciones']})",
+                                 text_color="gray", font=("Arial", 10), width=160
+                                 ).grid(row=0, column=4, padx=4, pady=5)
 
     def abrir_agregar_insumo(self):
         """Abre una ventana para agregar un nuevo insumo al inventario"""
@@ -433,7 +469,10 @@ class App(ctk.CTk):
                          anchor="w").grid(row=0, column=1, padx=10, pady=8, sticky="w")
             ctk.CTkButton(fila, text="Ver detalle", width=90,
                           command=lambda cl=c: self.abrir_detalle_cliente(cl)
-                          ).grid(row=0, column=2, padx=10, pady=6)
+                          ).grid(row=0, column=2, padx=5, pady=6)
+            ctk.CTkButton(fila, text="✏️ Editar", width=80, fg_color="#1a4a7a",
+                          command=lambda cl=c: self.abrir_editar_cliente(cl)
+                          ).grid(row=0, column=3, padx=5, pady=6)
 
     def abrir_detalle_cliente(self, cliente: dict):
         nombre_completo = f"{cliente.get('nombre','')} {cliente.get('apellido','')}".strip()
@@ -849,24 +888,44 @@ class App(ctk.CTk):
         else:
             messagebox.showerror("Error", "No se pudo procesar la venta.")
 
-
+    #######################################################################################################################################
     def vista_pedidos(self):
         for w in self.main.winfo_children(): w.destroy()
 
         # Título
         ctk.CTkLabel(self.main, text="📋 Pedidos", font=("Arial", 24, "bold")).pack(pady=10)
 
-        # Filtro por estado
+        # Filtros
         filtro_frame = ctk.CTkFrame(self.main, fg_color="transparent")
         filtro_frame.pack(fill="x", padx=20, pady=(0, 8))
-        ctk.CTkLabel(filtro_frame, text="Filtrar por estado:").pack(side="left", padx=(0, 10))
+
+        from datetime import date
+        hoy = date.today().strftime("%Y-%m-%d")
+        primer_dia_mes = date.today().replace(day=1).strftime("%Y-%m-%d")
+
+        ctk.CTkLabel(filtro_frame, text="Estado:").pack(side="left", padx=(0, 5))
         self.combo_filtro = ctk.CTkComboBox(
             filtro_frame,
             values=["todos", "Pendiente", "En preparación", "Listo", "Entregado"],
+            width=140,
             command=lambda v: self._recargar_pedidos(v)
         )
         self.combo_filtro.set("todos")
-        self.combo_filtro.pack(side="left")
+        self.combo_filtro.pack(side="left", padx=(0, 15))
+
+        ctk.CTkLabel(filtro_frame, text="Desde:").pack(side="left", padx=(0, 5))
+        self.entry_pedidos_desde = ctk.CTkEntry(filtro_frame, width=110)
+        self.entry_pedidos_desde.insert(0, primer_dia_mes)
+        self.entry_pedidos_desde.pack(side="left", padx=(0, 10))
+
+        ctk.CTkLabel(filtro_frame, text="Hasta:").pack(side="left", padx=(0, 5))
+        self.entry_pedidos_hasta = ctk.CTkEntry(filtro_frame, width=110)
+        self.entry_pedidos_hasta.insert(0, hoy)
+        self.entry_pedidos_hasta.pack(side="left", padx=(0, 10))
+
+        ctk.CTkButton(filtro_frame, text="🔍 Filtrar", width=90,
+                      command=lambda: self._recargar_pedidos(self.combo_filtro.get())
+                      ).pack(side="left")
 
         # Encabezado de columnas
         self.pedidos_container = ctk.CTkFrame(self.main, fg_color="transparent")
@@ -901,7 +960,9 @@ class App(ctk.CTk):
             "Entregado":       "#555555",
         }
 
-        pedidos = self.consultor.obtener_pedidos(estado)
+        desde = self.entry_pedidos_desde.get().strip() or ""
+        hasta  = self.entry_pedidos_hasta.get().strip() or ""
+        pedidos = self.consultor.obtener_pedidos(estado, desde or None, hasta or None)
         if not pedidos:
             ctk.CTkLabel(self.pedidos_scroll, text="No hay pedidos para mostrar.",
                          text_color="gray").pack(pady=20)
@@ -939,7 +1000,7 @@ class App(ctk.CTk):
                 command=lambda pid=p['id_pedido'], pcli=p['cliente'],
                                pest=p['estado'], pfecha=p['fecha_entrega'],
                                ppago=p['metodo_de_pago'], ptotal=p['total']:
-                    self._abrir_detalle_pedido(pid, pcli, pest, pfecha, ppago, ptotal)
+                    self._abrir_detalle_pedido(pid, pcli, pest, pfecha, ppago, ptotal, p.get('observaciones') or '')
             ).pack(side="left", padx=2)
 
             idx_actual = ESTADOS.index(p['estado']) if p['estado'] in ESTADOS else -1
@@ -954,6 +1015,20 @@ class App(ctk.CTk):
                         self._avanzar_estado(pid, sig)
                 ).pack(side="left", padx=2)
 
+            if p['estado'] not in ("Cancelado", "Entregado"):
+                ctk.CTkButton(
+                    btn_frame, text="✖ Cancelar", width=90,
+                    fg_color="#7a1a1a", hover_color="#5a0a0a",
+                    command=lambda pid=p['id_pedido']: self._cancelar_pedido(pid)
+                ).pack(side="left", padx=2)
+
+            ctk.CTkButton(
+                btn_frame, text="📝", width=36,
+                fg_color="#555",
+                command=lambda pid=p['id_pedido'], obs=p.get('observaciones') or '':
+                    self._editar_observacion(pid, obs)
+            ).pack(side="left", padx=2)
+
 
     def _avanzar_estado(self, id_pedido: int, nuevo_estado: str):
         ok = self.consultor.cambiar_estado_pedido(id_pedido, nuevo_estado)
@@ -964,7 +1039,7 @@ class App(ctk.CTk):
 
 
 
-    def _abrir_detalle_pedido(self, id_pedido, cliente, estado, fecha_entrega, metodo_pago, total):
+    def _abrir_detalle_pedido(self, id_pedido, cliente, estado, fecha_entrega, metodo_pago, total, observaciones=""):
         vent = ctk.CTkToplevel(self)
         vent.title(f"Pedido #{id_pedido}")
         vent.geometry("480x420")
@@ -979,10 +1054,11 @@ class App(ctk.CTk):
         datos_frame = ctk.CTkFrame(vent)
         datos_frame.pack(fill="x", padx=20, pady=6)
         for i, (label, valor) in enumerate([
-            ("Cliente",    cliente),
-            ("Estado",     estado),
-            ("Entrega",    str(fecha_entrega)),
-            ("Método pago", metodo_pago),
+            ("Cliente",       cliente),
+            ("Estado",        estado),
+            ("Entrega",       str(fecha_entrega)),
+            ("Método pago",   metodo_pago),
+            ("Observaciones", observaciones or "—"),
         ]):
             ctk.CTkLabel(datos_frame, text=f"{label}:", font=("Arial", 11, "bold"),
                          anchor="w", width=100).grid(row=i, column=0, padx=10, pady=3, sticky="w")
@@ -1264,6 +1340,286 @@ class App(ctk.CTk):
 
         ctk.CTkButton(add_frame, text="➕ Agregar", fg_color="green",
                       command=agregar).grid(row=1, column=2, padx=8, pady=6)
+        ################################################################################################################################
+    def vista_reportes(self):
+        for w in self.main.winfo_children(): w.destroy()
+        ctk.CTkLabel(self.main, text="📊 Reportes", font=("Arial", 24, "bold")).pack(pady=10)
+
+        # Selector de fechas
+        fechas_frame = ctk.CTkFrame(self.main)
+        fechas_frame.pack(fill="x", padx=20, pady=(0, 10))
+        fechas_frame.grid_columnconfigure(1, weight=1)
+        fechas_frame.grid_columnconfigure(3, weight=1)
+
+        from datetime import date
+        hoy = date.today().strftime("%Y-%m-%d")
+        primer_dia_mes = date.today().replace(day=1).strftime("%Y-%m-%d")
+
+        ctk.CTkLabel(fechas_frame, text="Desde:").grid(row=0, column=0, padx=(10,5), pady=10)
+        self.entry_desde = ctk.CTkEntry(fechas_frame)
+        self.entry_desde.insert(0, primer_dia_mes)
+        self.entry_desde.grid(row=0, column=1, sticky="ew", padx=5, pady=10)
+
+        ctk.CTkLabel(fechas_frame, text="Hasta:").grid(row=0, column=2, padx=(10,5), pady=10)
+        self.entry_hasta = ctk.CTkEntry(fechas_frame)
+        self.entry_hasta.insert(0, hoy)
+        self.entry_hasta.grid(row=0, column=3, sticky="ew", padx=5, pady=10)
+
+        ctk.CTkButton(fechas_frame, text="🔍 Generar", width=100,
+                      command=self._generar_reportes).grid(row=0, column=4, padx=10, pady=10)
+
+        # Contenedor de reportes (se llena al generar)
+        self.reporte_tabs = ctk.CTkTabview(self.main)
+        self.reporte_tabs.pack(fill="both", expand=True, padx=20, pady=5)
+        self.reporte_tabs.add("📅 Ventas por día")
+        self.reporte_tabs.add("🍬 Productos más vendidos")
+        self.reporte_tabs.add("👥 Mejores clientes")
+
+        # Generar con el período por defecto al abrir
+        self._generar_reportes()
+
+    def _generar_reportes(self):
+        desde = self.entry_desde.get().strip()
+        hasta = self.entry_hasta.get().strip()
+
+        import re
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', desde) or \
+           not re.match(r'^\d{4}-\d{2}-\d{2}$', hasta):
+            messagebox.showwarning("Fechas inválidas",
+                                   "Usá el formato AAAA-MM-DD en ambas fechas.")
+            return
+
+        # ── Pestaña 1: Ventas por día ──
+        tab1 = self.reporte_tabs.tab("📅 Ventas por día")
+        for w in tab1.winfo_children(): w.destroy()
+
+        ventas = self.consultor.reporte_ventas_por_periodo(desde, hasta)
+        if not ventas:
+            ctk.CTkLabel(tab1, text="Sin ventas en ese período.",
+                         text_color="gray").pack(pady=20)
+        else:
+            total_general = sum(float(v['total_dia']) for v in ventas)
+            total_pedidos = sum(int(v['cantidad_pedidos']) for v in ventas)
+
+            resumen = ctk.CTkFrame(tab1, fg_color="#1a3a1a", border_width=1,
+                                   border_color="#1a6b3c")
+            resumen.pack(fill="x", pady=(6, 4), padx=4)
+            ctk.CTkLabel(resumen,
+                         text=f"Total del período:  ${total_general:.2f}   "
+                              f"({total_pedidos} pedidos)",
+                         font=("Arial", 14, "bold"),
+                         text_color="lightgreen").pack(pady=8)
+
+            scroll = ctk.CTkScrollableFrame(tab1)
+            scroll.pack(fill="both", expand=True)
+            header = ctk.CTkFrame(scroll, fg_color="#2a2a2a")
+            header.pack(fill="x", pady=(0, 2))
+            for col, texto in enumerate(["Fecha", "Pedidos", "Total del día"]):
+                header.grid_columnconfigure(col, weight=1)
+                ctk.CTkLabel(header, text=texto, font=("Arial", 11, "bold"),
+                             text_color="gray").grid(row=0, column=col, padx=10, pady=5, sticky="w")
+            for v in ventas:
+                row = ctk.CTkFrame(scroll)
+                row.pack(fill="x", pady=2)
+                for col in range(3):
+                    row.grid_columnconfigure(col, weight=1)
+                ctk.CTkLabel(row, text=str(v['fecha_pedido'])
+                             ).grid(row=0, column=0, padx=10, pady=6, sticky="w")
+                ctk.CTkLabel(row, text=str(v['cantidad_pedidos'])
+                             ).grid(row=0, column=1, padx=10, pady=6, sticky="w")
+                ctk.CTkLabel(row, text=f"${float(v['total_dia']):.2f}",
+                             text_color="lightgreen"
+                             ).grid(row=0, column=2, padx=10, pady=6, sticky="w")
+
+        # ── Pestaña 2: Productos más vendidos ──
+        tab2 = self.reporte_tabs.tab("🍬 Productos más vendidos")
+        for w in tab2.winfo_children(): w.destroy()
+
+        productos = self.consultor.reporte_productos_mas_vendidos(desde, hasta)
+        if not productos:
+            ctk.CTkLabel(tab2, text="Sin ventas en ese período.",
+                         text_color="gray").pack(pady=20)
+        else:
+            scroll2 = ctk.CTkScrollableFrame(tab2)
+            scroll2.pack(fill="both", expand=True)
+            header2 = ctk.CTkFrame(scroll2, fg_color="#2a2a2a")
+            header2.pack(fill="x", pady=(0, 2))
+            for col, texto in enumerate(["Producto", "Unidades vendidas", "Total recaudado"]):
+                header2.grid_columnconfigure(col, weight=1)
+                ctk.CTkLabel(header2, text=texto, font=("Arial", 11, "bold"),
+                             text_color="gray").grid(row=0, column=col, padx=10, pady=5, sticky="w")
+            for idx, p in enumerate(productos):
+                row = ctk.CTkFrame(scroll2)
+                row.pack(fill="x", pady=2)
+                for col in range(3):
+                    row.grid_columnconfigure(col, weight=1)
+                # Medalla para el top 3
+                medalla = ["🥇", "🥈", "🥉"][idx] if idx < 3 else f"  {idx+1}."
+                ctk.CTkLabel(row, text=f"{medalla}  {p['nombre']}"
+                             ).grid(row=0, column=0, padx=10, pady=6, sticky="w")
+                ctk.CTkLabel(row, text=str(p['unidades_vendidas'])
+                             ).grid(row=0, column=1, padx=10, pady=6, sticky="w")
+                ctk.CTkLabel(row, text=f"${float(p['total_recaudado']):.2f}",
+                             text_color="lightgreen"
+                             ).grid(row=0, column=2, padx=10, pady=6, sticky="w")
+
+        # ── Pestaña 3: Mejores clientes ──
+        tab3 = self.reporte_tabs.tab("👥 Mejores clientes")
+        for w in tab3.winfo_children(): w.destroy()
+
+        clientes = self.consultor.reporte_mejores_clientes(desde, hasta)
+        if not clientes:
+            ctk.CTkLabel(tab3, text="Sin ventas en ese período.",
+                         text_color="gray").pack(pady=20)
+        else:
+            scroll3 = ctk.CTkScrollableFrame(tab3)
+            scroll3.pack(fill="both", expand=True)
+            header3 = ctk.CTkFrame(scroll3, fg_color="#2a2a2a")
+            header3.pack(fill="x", pady=(0, 2))
+            for col, texto in enumerate(["Cliente", "Pedidos", "Total gastado"]):
+                header3.grid_columnconfigure(col, weight=1)
+                ctk.CTkLabel(header3, text=texto, font=("Arial", 11, "bold"),
+                             text_color="gray").grid(row=0, column=col, padx=10, pady=5, sticky="w")
+            for idx, c in enumerate(clientes):
+                row = ctk.CTkFrame(scroll3)
+                row.pack(fill="x", pady=2)
+                for col in range(3):
+                    row.grid_columnconfigure(col, weight=1)
+                medalla = ["🥇", "🥈", "🥉"][idx] if idx < 3 else f"  {idx+1}."
+                ctk.CTkLabel(row, text=f"{medalla}  {c['cliente']}"
+                             ).grid(row=0, column=0, padx=10, pady=6, sticky="w")
+                ctk.CTkLabel(row, text=str(c['cantidad_pedidos'])
+                             ).grid(row=0, column=1, padx=10, pady=6, sticky="w")
+                ctk.CTkLabel(row, text=f"${float(c['total_gastado']):.2f}",
+                             text_color="lightgreen"
+                             ).grid(row=0, column=2, padx=10, pady=6, sticky="w")
+
+    def abrir_editar_cliente(self, cliente: dict):
+        vent = ctk.CTkToplevel(self)
+        vent.title(f"Editar cliente")
+        vent.geometry("400x380")
+        vent.resizable(False, False)
+        vent.attributes('-topmost', True)
+        vent.focus()
+        vent.grab_set()
+
+        nombre_completo = f"{cliente.get('nombre','')} {cliente.get('apellido','')}".strip()
+        ctk.CTkLabel(vent, text=f"✏️ Editar — {nombre_completo}",
+                     font=("Arial", 15, "bold")).pack(pady=12)
+
+        form = ctk.CTkFrame(vent)
+        form.pack(fill="both", expand=True, padx=20, pady=5)
+
+        campos = {}
+        filas = [
+            ("nombre",    "Nombre",    cliente.get('nombre', '')),
+            ("apellido",  "Apellido",  cliente.get('apellido', '')),
+            ("dni",       "DNI",       cliente.get('dni') or ''),
+            ("telefono",  "Teléfono",  cliente.get('telefono') or ''),
+            ("direccion", "Dirección", cliente.get('direccion') or ''),
+        ]
+        for key, label, valor in filas:
+            ctk.CTkLabel(form, text=label + ":", anchor="w").pack(fill="x", pady=(8, 0))
+            e = ctk.CTkEntry(form)
+            e.insert(0, str(valor))
+            e.pack(fill="x", pady=2)
+            campos[key] = e
+
+        def guardar():
+            nombre   = campos['nombre'].get().strip()
+            apellido = campos['apellido'].get().strip()
+            if not nombre or not apellido:
+                messagebox.showwarning("Faltan datos", "Nombre y apellido son obligatorios.",
+                                       parent=vent)
+                return
+
+            def nulo(k):
+                v = campos[k].get().strip()
+                return v if v else None
+
+            conn = self.consultor.conexion.conectar()
+            if not conn:
+                messagebox.showerror("Error", "Sin conexión a la base de datos.", parent=vent)
+                return
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """UPDATE cliente SET nombre=%s, apellido=%s, dni=%s,
+                           telefono=%s, direccion=%s WHERE id_cliente=%s""",
+                        (nombre, apellido, nulo('dni'), nulo('telefono'),
+                         nulo('direccion'), cliente['id_cliente'])
+                    )
+                    conn.commit()
+                self.consultor.conexion.cerrar()
+                messagebox.showinfo("✅ Éxito", "Cliente actualizado correctamente.", parent=vent)
+                vent.destroy()
+                self.vista_clientes()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=vent)
+
+        ctk.CTkButton(vent, text="Guardar cambios", fg_color="green",
+                      height=38, command=guardar).pack(pady=12, padx=20, fill="x")
+        
+    def _cancelar_pedido(self, id_pedido: int):
+        vent = ctk.CTkToplevel(self)
+        vent.title("Cancelar pedido")
+        vent.geometry("380x220")
+        vent.resizable(False, False)
+        vent.attributes('-topmost', True)
+        vent.focus()
+        vent.grab_set()
+
+        ctk.CTkLabel(vent, text=f"Cancelar Pedido #{id_pedido}",
+                     font=("Arial", 15, "bold")).pack(pady=12)
+        ctk.CTkLabel(vent, text="Motivo de cancelación:", anchor="w").pack(
+            fill="x", padx=20)
+        entry_motivo = ctk.CTkEntry(vent, placeholder_text="Ej: Cliente no retiró el pedido")
+        entry_motivo.pack(fill="x", padx=20, pady=8)
+
+        def confirmar():
+            motivo = entry_motivo.get().strip() or "Sin motivo especificado"
+            if not messagebox.askyesno("Confirmar",
+                                       f"¿Cancelar el pedido #{id_pedido}?\nMotivo: {motivo}",
+                                       parent=vent):
+                return
+            ok = self.consultor.cancelar_pedido(id_pedido, motivo)
+            if ok:
+                messagebox.showinfo("✅ Cancelado",
+                                    f"Pedido #{id_pedido} cancelado.", parent=vent)
+                vent.destroy()
+                self._recargar_pedidos(self.combo_filtro.get())
+            else:
+                messagebox.showerror("Error", "No se pudo cancelar el pedido.", parent=vent)
+
+        ctk.CTkButton(vent, text="Confirmar cancelación", fg_color="#7a1a1a",
+                      height=38, command=confirmar).pack(pady=10, padx=20, fill="x")
+
+    def _editar_observacion(self, id_pedido: int, observacion_actual: str):
+        vent = ctk.CTkToplevel(self)
+        vent.title(f"Observación — Pedido #{id_pedido}")
+        vent.geometry("380x200")
+        vent.resizable(False, False)
+        vent.attributes('-topmost', True)
+        vent.focus()
+        vent.grab_set()
+
+        ctk.CTkLabel(vent, text=f"📝 Observación Pedido #{id_pedido}",
+                     font=("Arial", 14, "bold")).pack(pady=12)
+        entry_obs = ctk.CTkEntry(vent, placeholder_text="Escribí una observación...")
+        entry_obs.insert(0, observacion_actual)
+        entry_obs.pack(fill="x", padx=20, pady=8)
+
+        def guardar():
+            obs = entry_obs.get().strip()
+            ok = self.consultor.guardar_observacion_pedido(id_pedido, obs)
+            if ok:
+                vent.destroy()
+                self._recargar_pedidos(self.combo_filtro.get())
+            else:
+                messagebox.showerror("Error", "No se pudo guardar la observación.", parent=vent)
+
+        ctk.CTkButton(vent, text="Guardar", fg_color="green",
+                      height=38, command=guardar).pack(pady=8, padx=20, fill="x")
 
 if __name__ == "__main__":
     App().mainloop()

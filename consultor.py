@@ -32,14 +32,23 @@ class Consultor:
         return resultados
     ##########################################################################################################################################################################
 
-    def obtener_pedidos(self, estado: str = "todos") -> List[Dict]:
-        """Trae todos los pedidos con cliente y monto total."""
-        if estado == "todos":
-            where = ""
-            params = None
-        else:
-            where = "WHERE p.estado = %s"
-            params = (estado,)
+    def obtener_pedidos(self, estado: str = "todos",
+                        desde: str | None = None, hasta: str | None = None) -> List[Dict]:
+        condiciones = []
+        params = []
+
+        if estado != "todos":
+            condiciones.append("p.estado = %s")
+            params.append(estado)
+        if desde:
+            condiciones.append("p.fecha_pedido >= %s")
+            params.append(desde)
+        if hasta:
+            condiciones.append("p.fecha_pedido <= %s")
+            params.append(hasta)
+
+        where = ("WHERE " + " AND ".join(condiciones)) if condiciones else ""
+
         query = f"""
             SELECT 
                 p.id_pedido,
@@ -48,6 +57,7 @@ class Consultor:
                 p.fecha_pedido,
                 p.fecha_entrega,
                 p.metodo_de_pago,
+                p.observaciones,
                 SUM(dp.subtotal) AS total
             FROM pedido p
             JOIN cliente c ON p.id_cliente = c.id_cliente
@@ -57,7 +67,7 @@ class Consultor:
                      p.fecha_pedido, p.fecha_entrega, p.metodo_de_pago
             ORDER BY p.id_pedido DESC
         """
-        return self._ejecutar_consulta(query, params)
+        return self._ejecutar_consulta(query, tuple(params) if params else None)
 
     def obtener_items_pedido(self, id_pedido: int) -> List[Dict]:
         """Trae los productos de un pedido específico."""
@@ -88,6 +98,44 @@ class Consultor:
                 return cursor.rowcount > 0
         except Exception as e:
             print(f"❌ Error al cambiar estado: {e}")
+            return False
+        finally:
+            self.conexion.cerrar()
+
+
+    def cancelar_pedido(self, id_pedido: int, motivo: str) -> bool:
+        connection = self.conexion.conectar()
+        if not connection:
+            return False
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """UPDATE pedido SET estado = 'Cancelado', 
+                       observaciones = %s WHERE id_pedido = %s""",
+                    (motivo, id_pedido)
+                )
+                connection.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"❌ Error al cancelar pedido: {e}")
+            return False
+        finally:
+            self.conexion.cerrar()
+
+    def guardar_observacion_pedido(self, id_pedido: int, observacion: str) -> bool:
+        connection = self.conexion.conectar()
+        if not connection:
+            return False
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE pedido SET observaciones = %s WHERE id_pedido = %s",
+                    (observacion, id_pedido)
+                )
+                connection.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"❌ Error al guardar observación: {e}")
             return False
         finally:
             self.conexion.cerrar()
@@ -200,6 +248,16 @@ class Consultor:
         res = self._ejecutar_consulta(query)
         return res[0]['total'] if res else 0
     
+    def obtener_ingredientes_stock_bajo(self) -> List[Dict]:
+        """Devuelve los ingredientes que están por debajo del stock mínimo."""
+        query = """
+            SELECT nombre, stock_actual, stock_minimo, unidad_medida
+            FROM ingredientes
+            WHERE stock_actual <= stock_minimo
+            ORDER BY (stock_minimo - stock_actual) DESC
+        """
+        return self._ejecutar_consulta(query)
+    
     def obtener_movimientos_recientes(self, dias: int = 30) -> List[Dict]:
         """
         Obtiene todos los movimientos de insumos y productos en los últimos 'dias' días.
@@ -283,6 +341,55 @@ class Consultor:
         """
         like = f"%{termino}%"
         return self._ejecutar_consulta(query, (termino, like, like, like))
+
+    def reporte_ventas_por_periodo(self, desde: str, hasta: str) -> List[Dict]:
+        """Ventas entre dos fechas con total por día."""
+        query = """
+            SELECT 
+                p.fecha_pedido,
+                COUNT(DISTINCT p.id_pedido) AS cantidad_pedidos,
+                SUM(dp.subtotal) AS total_dia
+            FROM pedido p
+            JOIN detalle_pedido dp ON dp.id_pedido = p.id_pedido
+            WHERE p.fecha_pedido BETWEEN %s AND %s
+            GROUP BY p.fecha_pedido
+            ORDER BY p.fecha_pedido DESC
+        """
+        return self._ejecutar_consulta(query, (desde, hasta))
+
+    def reporte_productos_mas_vendidos(self, desde: str, hasta: str) -> List[Dict]:
+        """Productos más vendidos en un período."""
+        query = """
+            SELECT 
+                pr.nombre,
+                SUM(dp.cantidad) AS unidades_vendidas,
+                SUM(dp.subtotal) AS total_recaudado
+            FROM detalle_pedido dp
+            JOIN producto pr ON dp.id_producto = pr.id_producto
+            JOIN pedido p ON dp.id_pedido = p.id_pedido
+            WHERE p.fecha_pedido BETWEEN %s AND %s
+            GROUP BY pr.id_producto, pr.nombre
+            ORDER BY unidades_vendidas DESC
+            LIMIT 10
+        """
+        return self._ejecutar_consulta(query, (desde, hasta))
+
+    def reporte_mejores_clientes(self, desde: str, hasta: str) -> List[Dict]:
+        """Clientes con más compras en un período."""
+        query = """
+            SELECT 
+                CONCAT(c.nombre, ' ', c.apellido) AS cliente,
+                COUNT(DISTINCT p.id_pedido) AS cantidad_pedidos,
+                SUM(dp.subtotal) AS total_gastado
+            FROM pedido p
+            JOIN cliente c ON p.id_cliente = c.id_cliente
+            JOIN detalle_pedido dp ON dp.id_pedido = p.id_pedido
+            WHERE p.fecha_pedido BETWEEN %s AND %s
+            GROUP BY c.id_cliente, c.nombre, c.apellido
+            ORDER BY total_gastado DESC
+            LIMIT 10
+        """
+        return self._ejecutar_consulta(query, (desde, hasta))
 
     # --- MÉTODOS PARA PRODUCTOS (NUEVA VENTA) ---#########################################################################################################################
 
