@@ -2,6 +2,9 @@ import customtkinter as ctk
 from tkinter import messagebox
 from consultor import Consultor
 from insertor import Insertor
+import re
+from datetime import date
+
 
 class App(ctk.CTk):
     def __init__(self):
@@ -22,15 +25,15 @@ class App(ctk.CTk):
         self.side = ctk.CTkFrame(self, width=200, corner_radius=0)
         self.side.grid(row=0, column=0, sticky="nsew")
         ctk.CTkLabel(self.side, text="MENU", font=("Arial", 20, "bold")).pack(pady=20)
-        ctk.CTkButton(self.side, text="Dashboard", command=self.vista_dash).pack(pady=5, padx=10)
-        ctk.CTkButton(self.side, text="Inventario", command=self.vista_inv).pack(pady=5, padx=10)
-        ctk.CTkButton(self.side, text="VENDER", fg_color="green", command=self.vista_pos).pack(pady=5, padx=10)
+        ctk.CTkButton(self.side, text="🔎Panel de Control", command=self.vista_dash).pack(pady=5, padx=10)
+        ctk.CTkButton(self.side, text="🍓Inventario", command=self.vista_inv).pack(pady=5, padx=10)
+        ctk.CTkButton(self.side, text="🤑VENDER", fg_color="green", command=self.vista_pos).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="🍬 Productos", command=self.vista_productos).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="📊 Reportes", command=self.vista_reportes).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="📋 Pedidos", command=self.vista_pedidos).pack(pady=5, padx=10)
         ctk.CTkButton(self.side, text="👥 Clientes", command=self.vista_clientes).pack(pady=5, padx=10)
-        ctk.CTkButton(self.side, text="opciones", command=self.vista_opciones).pack(pady=5, padx=10)
-        ctk.CTkButton(self.side, text="salir", fg_color="red", command=self.destroy).pack(pady=5, padx=10)
+        ctk.CTkButton(self.side, text="⚙️Opciones", command=self.vista_opciones).pack(pady=5, padx=10)
+        ctk.CTkButton(self.side, text="👋🏼Salir", fg_color="red", command=self.destroy).pack(pady=5, padx=10)
 
         self.main = ctk.CTkFrame(self, fg_color="transparent")
         self.main.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
@@ -41,7 +44,7 @@ class App(ctk.CTk):
     #si es que me acuerdo, claro
     def vista_dash(self):
         for w in self.main.winfo_children(): w.destroy()
-        ctk.CTkLabel(self.main, text="Dashboard", font=("Arial", 24, "bold")).pack(pady=10)
+        ctk.CTkLabel(self.main, text="Panel de Control", font=("Arial", 24, "bold")).pack(pady=10)
 
         # Alerta stock bajo
         alertas = self.consultor.contar_stock_bajo()
@@ -70,15 +73,16 @@ class App(ctk.CTk):
         # Encabezado de columnas
         header = ctk.CTkFrame(ventas_frame, fg_color="#2a2a2a")
         header.pack(fill="x", pady=(0, 2))
-        header.grid_columnconfigure(0, weight=1)
-        header.grid_columnconfigure(1, weight=2)
-        header.grid_columnconfigure(2, weight=1)
-        header.grid_columnconfigure(3, weight=1)
-        header.grid_columnconfigure(4, weight=1)
-        for col, texto in enumerate(["#Pedido", "Cliente", "Fecha", "Método", "Total"]):
-            ctk.CTkLabel(header, text=texto, font=("Arial", 11, "bold"),
-                         text_color="gray").grid(row=0, column=col, padx=8, pady=4, sticky="w")
+        header.grid_columnconfigure(0, weight=1) # #Pedido
+        header.grid_columnconfigure(1, weight=3) # Cliente (Le damos 3 para que no empuje)
+        header.grid_columnconfigure(2, weight=2) # Fecha
+        header.grid_columnconfigure(3, weight=2) # Método
+        header.grid_columnconfigure(4, weight=2) # Total
 
+        columnas = ["#Pedido", "Cliente", "Fecha", "Método", "Total"]
+        for col, texto in enumerate(columnas):
+            ctk.CTkLabel(header, text=texto, font=("Arial", 11, "bold"),
+                         text_color="gray").grid(row=0, column=col, padx=10, pady=5, sticky="w")
         ventas = self.consultor.obtener_ultimas_ventas(20)
         if not ventas:
             ctk.CTkLabel(ventas_frame, text="No hay ventas registradas aún.",
@@ -176,7 +180,7 @@ class App(ctk.CTk):
         """Abre una ventana para agregar un nuevo insumo al inventario"""
         ventana = ctk.CTkToplevel(self)
         ventana.title("Agregar Insumo")
-        ventana.geometry("450x500")
+        ventana.geometry("450x550")
         ventana.resizable(False, False)
         ventana.attributes('-topmost', True)  # Pone la ventana siempre al frente
         ventana.focus()  # Enfoca la ventana
@@ -449,7 +453,7 @@ class App(ctk.CTk):
         scroll = ctk.CTkScrollableFrame(self.main, label_text="Clientes registrados")
         scroll.pack(fill="both", expand=True, padx=20, pady=10)
 
-        clientes = self.consultor.obtener_todos_los_clientes()
+        clientes = self.consultor.buscar_cliente("")
         if not clientes:
             ctk.CTkLabel(scroll, text="No hay clientes registrados.",
                          text_color="gray").pack(pady=20)
@@ -495,7 +499,7 @@ class App(ctk.CTk):
             ("DNI",       cliente.get('dni') or '—'),
             ("Teléfono",  cliente.get('telefono') or '—'),
             ("Dirección", cliente.get('direccion') or '—'),
-            ("Registrado", str(cliente.get('created_at', '—'))),
+            ("Registrado", str(cliente.get('cliente') or '—')),
         ]
         for i, (label, valor) in enumerate(datos):
             ctk.CTkLabel(datos_frame, text=f"{label}:", font=("Arial", 11, "bold"),
@@ -515,7 +519,7 @@ class App(ctk.CTk):
             ctk.CTkLabel(pedidos_scroll, text="Sin pedidos registrados.",
                          text_color="gray").pack(pady=10)
         else:
-            monto_total = 0
+            monto_total = 0.0
             for p in pedidos:
                 monto_total += float(p.get('total') or 0)
                 row = ctk.CTkFrame(pedidos_scroll)
@@ -537,7 +541,7 @@ class App(ctk.CTk):
         for w in self.main.winfo_children(): 
             w.destroy()
         ctk.CTkLabel(self.main, text="Opciones", font=("Arial", 24)).pack(pady=10)
-        ctk.CTkLabel(self.main, text="Aquí van las config xd", font=("Arial", 14)).pack(pady=20)
+        ctk.CTkLabel(self.main, text="Configuración de pantalla", font=("Arial", 14)).pack(pady=20)
     # Switch para modo claro/oscuro 
         self.switch_tema = ctk.CTkSwitch(self.main, text="Modo Oscuro", command=self.toggle_tema) 
         self.switch_tema.pack(pady=10) 
@@ -701,7 +705,7 @@ class App(ctk.CTk):
         """Formulario rápido para crear un cliente desde el POS."""
         vent = ctk.CTkToplevel(self)
         vent.title("Nuevo Cliente")
-        vent.geometry("380x380")
+        vent.geometry("380x480")
         vent.attributes('-topmost', True)
         vent.focus()
 
@@ -729,7 +733,7 @@ class App(ctk.CTk):
                 messagebox.showerror("Error", "Sin conexión a la base de datos.")
                 return
             try:
-                import pymysql
+                
 
                 def nulo(campo):
                     v = campos[campo].get().strip()
@@ -801,7 +805,7 @@ class App(ctk.CTk):
                           command=lambda i=idx: self.eliminar_del_carrito(i)
                           ).grid(row=0, column=5, padx=4)
 
-        self.btn_pagar.configure(text=f"COBRAR  ${total:.2f}")
+        self.btn_pagar.configure(text=f"CONFIRMAR Y COBRAR  ${total:.2f}")
 
 
     def _cambiar_cantidad(self, indice, delta):
@@ -847,7 +851,7 @@ class App(ctk.CTk):
         if not fecha:
             messagebox.showwarning("Sin fecha", "Ingresá la fecha de entrega.")
             return
-        import re
+        
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', fecha):
             messagebox.showwarning("Fecha inválida", "Usá el formato AAAA-MM-DD, por ejemplo 2025-06-30.")
             return
@@ -899,7 +903,7 @@ class App(ctk.CTk):
         filtro_frame = ctk.CTkFrame(self.main, fg_color="transparent")
         filtro_frame.pack(fill="x", padx=20, pady=(0, 8))
 
-        from datetime import date
+        
         hoy = date.today().strftime("%Y-%m-%d")
         primer_dia_mes = date.today().replace(day=1).strftime("%Y-%m-%d")
 
@@ -1142,13 +1146,14 @@ class App(ctk.CTk):
                           command=lambda pid=p['id_producto'], pnom=p['nombre']:
                               self._eliminar_producto(pid, pnom)
                           ).pack(side="left", padx=2)
+            
 
     def abrir_form_producto(self, producto: dict | None = None):
         """Formulario para crear o editar un producto."""
         es_edicion = producto is not None
         vent = ctk.CTkToplevel(self)
         vent.title("Editar Producto" if es_edicion else "Nuevo Producto")
-        vent.geometry("420x480")
+        vent.geometry("420x680")
         vent.resizable(False, False)
         vent.attributes('-topmost', True)
         vent.focus()
@@ -1172,7 +1177,7 @@ class App(ctk.CTk):
         for key, label, placeholder in filas:
             ctk.CTkLabel(form, text=label + ":", anchor="w").pack(fill="x", pady=(8, 0))
             e = ctk.CTkEntry(form, placeholder_text=placeholder)
-            if es_edicion and producto.get(key) is not None:
+            if es_edicion and producto is not None and producto.get(key) is not None:
                 e.insert(0, str(producto[key]))
             e.pack(fill="x", pady=2)
             campos[key] = e
@@ -1351,7 +1356,7 @@ class App(ctk.CTk):
         fechas_frame.grid_columnconfigure(1, weight=1)
         fechas_frame.grid_columnconfigure(3, weight=1)
 
-        from datetime import date
+        
         hoy = date.today().strftime("%Y-%m-%d")
         primer_dia_mes = date.today().replace(day=1).strftime("%Y-%m-%d")
 
@@ -1382,7 +1387,7 @@ class App(ctk.CTk):
         desde = self.entry_desde.get().strip()
         hasta = self.entry_hasta.get().strip()
 
-        import re
+        
         if not re.match(r'^\d{4}-\d{2}-\d{2}$', desde) or \
            not re.match(r'^\d{4}-\d{2}-\d{2}$', hasta):
             messagebox.showwarning("Fechas inválidas",
@@ -1483,6 +1488,9 @@ class App(ctk.CTk):
             for idx, c in enumerate(clientes):
                 row = ctk.CTkFrame(scroll3)
                 row.pack(fill="x", pady=2)
+                row.grid_columnconfigure(0, weight=3) # Esto le da espacio al nombre
+                row.grid_columnconfigure(1, weight=1) # Esto alinea los pedidos
+                row.grid_columnconfigure(2, weight=1) # Esto alinea el total
                 for col in range(3):
                     row.grid_columnconfigure(col, weight=1)
                 medalla = ["🥇", "🥈", "🥉"][idx] if idx < 3 else f"  {idx+1}."
@@ -1497,7 +1505,7 @@ class App(ctk.CTk):
     def abrir_editar_cliente(self, cliente: dict):
         vent = ctk.CTkToplevel(self)
         vent.title(f"Editar cliente")
-        vent.geometry("400x380")
+        vent.geometry("400x480")
         vent.resizable(False, False)
         vent.attributes('-topmost', True)
         vent.focus()
@@ -1563,7 +1571,7 @@ class App(ctk.CTk):
     def _cancelar_pedido(self, id_pedido: int):
         vent = ctk.CTkToplevel(self)
         vent.title("Cancelar pedido")
-        vent.geometry("380x220")
+        vent.geometry("380x320")
         vent.resizable(False, False)
         vent.attributes('-topmost', True)
         vent.focus()

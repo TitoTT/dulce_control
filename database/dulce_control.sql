@@ -1,14 +1,50 @@
-create database dulce_control;
-use dulce_control;
+DROP DATABASE IF EXISTS dulce_control;
+CREATE DATABASE dulce_control;
+USE dulce_control;
 
-#PRODUCTO####################################
-create table ingredientes(
-	id_ingredientes int primary key auto_increment not null,
-    nombre varchar(150) not null,
-    stock_minimo int not null,
-    stock_actual int not null,
-    costo_unitario decimal(10,2) default 0 not null,
-    unidad_medida varchar(50) not null
+-- ############################################
+-- 1. TABLAS MAESTRAS
+-- ############################################
+
+CREATE TABLE ingredientes(
+    id_ingredientes INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    stock_minimo INT NOT NULL,
+    stock_actual INT NOT NULL,
+    costo_unitario DECIMAL(10,2) DEFAULT 0 NOT NULL,
+    unidad_medida VARCHAR(50) NOT NULL
+);
+
+CREATE TABLE cliente(
+    id_cliente INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+    nombre VARCHAR(100) NOT NULL,
+    apellido VARCHAR(100) NOT NULL,
+    dni INT NOT NULL,
+    telefono INT NOT NULL,
+    direccion VARCHAR(250) NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP 
+);
+
+CREATE TABLE decoracion_personalizada(
+    id_decoracion INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+    tipo VARCHAR(50) NOT NULL,
+    costo_extra DECIMAL(10,2) NOT NULL
+);
+
+-- ############################################
+-- 2. TABLAS RELACIONADAS
+-- ############################################
+
+CREATE TABLE producto(
+    id_producto INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+    nombre VARCHAR(150) NOT NULL,
+    stock INT NOT NULL,
+    categoria VARCHAR(100) NOT NULL,
+    tiempo_preparacion INT,
+    precio DECIMAL(10,2) NOT NULL,
+    descripcion VARCHAR(100),
+    id_ingredientes INT,
+    FOREIGN KEY (id_ingredientes) REFERENCES ingredientes(id_ingredientes)
 );
 
 CREATE TABLE movimientos_ingredientes (
@@ -21,89 +57,39 @@ CREATE TABLE movimientos_ingredientes (
     FOREIGN KEY (id_ingredientes) REFERENCES ingredientes(id_ingredientes)
 ) ENGINE=InnoDB;
 
-
-create table producto(
-	id_producto int primary key auto_increment not null,
-    nombre varchar(150) not null,
-    stock int not null,
-    categoria varchar(100) not null,
-    tiempo_preparacion int,
-    precio decimal(10,2 )not null,
-    descripcion varchar(100),
-    id_ingredientes int,
-    foreign key (id_ingredientes) references ingredientes(id_ingredientes)
-);
-############################################
-
-#RECETAS#####################################
-create table recetas(
-	id_receta int primary key auto_increment not null,
-    id_producto int not null,
-    id_ingredientes int not null,
-    cantidad_requerida decimal(10,2) not null,
-    foreign key (id_producto) references producto(id_producto),
-    foreign key (id_ingredientes) references ingredientes(id_ingredientes)
-);
-############################################
-
-
-
-#PEDIDO#####################################
-create table cliente(
-	id_cliente int primary key auto_increment not null,
-    nombre varchar(100) not null,
-    apellido varchar(100) not null,
-    dni int not null,
-    telefono int not null,
-    direccion varchar(250) not null
+CREATE TABLE recetas(
+    id_receta INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+    id_producto INT NOT NULL,
+    id_ingredientes INT NOT NULL,
+    cantidad_requerida DECIMAL(10,2) NOT NULL,
+    FOREIGN KEY (id_producto) REFERENCES producto(id_producto),
+    FOREIGN KEY (id_ingredientes) REFERENCES ingredientes(id_ingredientes)
 );
 
-create table pedido(
-	id_pedido int primary key auto_increment not null,
-    metodo_de_pago varchar(50) not null,
-    estado varchar(50) not null,
-    fecha_entrega date not null,
-    fecha_pedido date not null,
-    id_cliente int,
-    foreign key(id_cliente) references cliente(id_cliente)
-);
-#############################################
-
-
-
-#DECORACION##################################
-create table decoracion_perzonalizada(
-	id_decoracion int primary key auto_increment not null,
-    tipo varchar(50) not null,
-    costo_extra decimal(10,2) not null,
-    id_detallePedido int
+CREATE TABLE pedido(
+    id_pedido INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+    metodo_de_pago VARCHAR(50) NOT NULL,
+    estado VARCHAR(50) NOT NULL,
+    fecha_entrega DATE NOT NULL,
+    fecha_pedido DATE NOT NULL,
+    total DECIMAL(10,2) NOT NULL DEFAULT 0.00, -- para que funcione el total
+    observaciones TEXT,                        -- para corregir el error de la terminal
+    id_cliente INT,
+    FOREIGN KEY(id_cliente) REFERENCES cliente(id_cliente)
 );
 
-create table detalle_pedido(
-	id_detallePedido int primary key auto_increment not null,
-    precio_unitario decimal(10,2) not null,
-    cantidad int not null,
-    subtotal int not null,
-    id_producto int,
-    id_pedido int,
-    id_decoracion int,
-    foreign key (id_producto) references producto(id_producto),
-    foreign key (id_pedido) references pedido(id_pedido),
-    foreign key (id_decoracion) references decoracion_perzonalizada(id_decoracion)
+CREATE TABLE detalle_pedido(
+    id_detallePedido INT PRIMARY KEY AUTO_INCREMENT NOT NULL,
+    precio_unitario DECIMAL(10,2) NOT NULL,
+    cantidad INT NOT NULL,
+    subtotal DECIMAL(10,2) NOT NULL, -- Corregido de INT a DECIMAL
+    id_producto INT,
+    id_pedido INT,
+    id_decoracion INT,
+    FOREIGN KEY (id_producto) REFERENCES producto(id_producto),
+    FOREIGN KEY (id_pedido) REFERENCES pedido(id_pedido),
+    FOREIGN KEY (id_decoracion) REFERENCES decoracion_perzonalizada(id_decoracion)
 );
-###########################################
-
--- PROCEDIMIENTO ALMACENADO PARA REGISTRAR CONSUMO DE INGREDIENTES
-CREATE PROCEDURE registrar_consumo_ingrediente(
-    IN p_id_ingredientes INT,
-    IN p_cantidad_descontar DECIMAL(10,2)
-)
-BEGIN
-    UPDATE ingredientes
-    SET stock_actual = stock_actual - p_cantidad_descontar
-    WHERE id_ingredientes = p_id_ingredientes;
-END;
-
 
 CREATE TABLE movimientos_inventario (
     id_movimiento INT AUTO_INCREMENT PRIMARY KEY,
@@ -114,158 +100,80 @@ CREATE TABLE movimientos_inventario (
     FOREIGN KEY (id_producto) REFERENCES producto(id_producto)
 ) ENGINE=InnoDB;
 
-SHOW CREATE TABLE movimientos_inventario;
+-- ############################################
+-- 3. PROCEDIMIENTOS ALMACENADOS
+-- ############################################
 
 DELIMITER //
 
+DROP PROCEDURE IF EXISTS registrar_consumo_ingrediente //
+CREATE PROCEDURE registrar_consumo_ingrediente(
+    IN p_id_ingredientes INT, 
+    IN p_cantidad_descontar INT
+)
+BEGIN
+    UPDATE ingredientes 
+    SET stock_actual = stock_actual - p_cantidad_descontar
+    WHERE id_ingredientes = p_id_ingredientes;
+END //
+
+DROP PROCEDURE IF EXISTS registrar_entrada_producto //
 CREATE PROCEDURE registrar_entrada_producto(
     IN p_id_producto INT,
     IN p_cantidad INT
 )
 BEGIN
-    -- Aumentar stock
-    UPDATE producto
-    SET stock = stock + p_cantidad
-    WHERE id_producto = p_id_producto;
-
-    -- Registrar movimiento
+    UPDATE producto SET stock = stock + p_cantidad WHERE id_producto = p_id_producto;
     INSERT INTO movimientos_inventario (id_producto, tipo, cantidad)
     VALUES (p_id_producto, 'entrada', p_cantidad);
 END //
 
-DELIMITER ;
-
-DELIMITER //
-
+DROP PROCEDURE IF EXISTS registrar_salida_producto //
 CREATE PROCEDURE registrar_salida_producto(
     IN p_id_producto INT,
     IN p_cantidad INT
 )
 BEGIN
-    DECLARE stock_actual INT;
+    DECLARE v_stock_actual INT;
+    SELECT stock INTO v_stock_actual FROM producto WHERE id_producto = p_id_producto;
 
-    -- Obtener stock actual
-    SELECT stock INTO stock_actual
-    FROM producto
-    WHERE id_producto = p_id_producto;
-
-    -- Validar que haya stock suficiente
-    IF stock_actual >= p_cantidad THEN
-
-        UPDATE producto
-        SET stock = stock - p_cantidad
-        WHERE id_producto = p_id_producto;
-
+    IF v_stock_actual >= p_cantidad THEN
+        UPDATE producto SET stock = stock - p_cantidad WHERE id_producto = p_id_producto;
         INSERT INTO movimientos_inventario (id_producto, tipo, cantidad)
         VALUES (p_id_producto, 'salida', p_cantidad);
-
     ELSE
-        SIGNAL SQLSTATE '45000'
-        SET MESSAGE_TEXT = 'Stock insuficiente';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Stock insuficiente';
     END IF;
-
 END //
 
 DELIMITER ;
 
-CALL registrar_entrada_producto(1, 10);
-CALL registrar_salida_producto(1, 5);
-SELECT 
-    m.id_movimiento,
-    p.nombre,
-    m.tipo,
-    m.cantidad,
-    m.fecha
-FROM movimientos_inventario m
-JOIN producto p ON m.id_producto = p.id_producto
-ORDER BY m.fecha DESC;
-
-SELECT 
-    'Ingrediente' AS tipo_entidad,
-    i.nombre AS nombre,
-    mi.tipo,
-    mi.cantidad,
-    mi.fecha,
-    mi.observaciones
-FROM movimientos_ingredientes mi
-JOIN ingredientes i ON mi.id_ingredientes = i.id_ingredientes
-WHERE mi.fecha >= CURDATE() - INTERVAL 30 DAY
-
-UNION ALL
-
-SELECT 
-    'Producto' AS tipo_entidad,
-    p.nombre AS nombre,
-    mp.tipo,
-    mp.cantidad,
-    mp.fecha,
-    NULL AS observaciones
-FROM movimientos_inventario mp
-JOIN producto p ON mp.id_producto = p.id_producto
-WHERE mp.fecha >= CURDATE() - INTERVAL 30 DAY
-
-ORDER BY fecha DESC;
-
-
-SHOW CREATE TABLE productos;
-
+-- ############################################
+-- 4. INSERT DE DATOS
+-- ############################################
 
 INSERT INTO ingredientes (nombre, stock_minimo, stock_actual, costo_unitario, unidad_medida) VALUES
-('Harina de Trigo', 5000, 100, 0.05, 'gramos'),
+('Harina de Trigo', 5000, 10000, 0.05, 'gramos'),
 ('Azúcar Blanca', 3000, 8500, 0.03, 'gramos'),
-('Mantequilla sin Sal', 2000, 50, 0.15, 'gramos'),
-('Huevos (unidad)', 100, 1, 0.20, 'unidad'),
-('Esencia de Vainilla', 500, 5, 0.08, 'mililitros'),
-('Cacao en Polvo', 1000, 50, 0.10, 'gramos'),
-('Levadura en Polvo', 500, 5, 0.06, 'gramos'),
-('Crema de Leche', 1500, 100, 0.12, 'mililitros'),
-('Frutillas Frescas', 800, 200, 0.25, 'gramos');
+('Mantequilla sin Sal', 2000, 5000, 0.15, 'gramos'),
+('Huevos (unidad)', 100, 200, 0.20, 'unidad'),
+('Esencia de Vainilla', 500, 1000, 0.08, 'mililitros'),
+('Cacao en Polvo', 1000, 2000, 0.10, 'gramos');
 
 INSERT INTO cliente (nombre, apellido, dni, telefono, direccion) VALUES
-('Ana', 'Gómez', 1,5551234, 'Av. Siempre Viva 742, Springfield'),
-('Pedro', 'Martínez', 2,5555678, 'Calle Falsa 123, Ciudad A'),
-('Laura', 'Rodríguez', 3,5559012, 'Blvd. del Sol 45, Pueblo B'),
-('Carlos', 'Sánchez', 4,5553456, 'Carrera 8 #15-30, Urb. C');
+('Ana', 'Gómez', 12345678, 5551234, 'Av. Siempre Viva 742'),
+('Pedro', 'Martínez', 87654321, 5555678, 'Calle Falsa 123');
 
 INSERT INTO decoracion_perzonalizada (tipo, costo_extra) VALUES
 ('Fondant Temático', 15.00),
-('Flores Naturales', 8.50),
-('Letras de Chocolate', 4.00),
-('Glaseado Espejo', 6.75);
+('Flores Naturales', 8.50);
 
 INSERT INTO producto (nombre, stock, categoria, tiempo_preparacion, precio, descripcion, id_ingredientes) VALUES
-('Tarta de Chocolate Clásica', 15, 'Pastel', 60, 25.00, 'Tarta húmeda con glaseado de cacao', 6), -- Cacao en Polvo
-('Muffins de Vainilla', 50, 'Cupcake', 25, 3.50, 'Muffin esponjoso con esencia de vainilla', 5), -- Esencia de Vainilla
-('Galletas de Mantequilla (docena)', 30, 'Galleta', 40, 12.00, 'Galletas clásicas de mantequilla', 3), -- Mantequilla
-('Cheesecake de Frutilla', 10, 'Postre Frío', 180, 30.00, 'Base de galleta con cobertura de frutilla', 9), -- Frutillas Frescas
-('Brownies (unidad)', 40, 'Postre', 35, 4.50, 'Brownie denso y chocolatoso', 6); -- Cacao en Polvo
-
--- Relaciones de recetas: qué ingredientes usa cada producto
-INSERT INTO recetas (id_producto, id_ingredientes, cantidad_requerida) VALUES
-(1, 6, 200), -- Tarta Chocolate: 200g de Cacao
-(1, 1, 300), -- Tarta Chocolate: 300g de Harina
-(1, 3, 150), -- Tarta Chocolate: 150g de Mantequilla
-(1, 4, 3), -- Tarta Chocolate: 3 huevos
-(2, 5, 10), -- Muffins Vainilla: 10ml Esencia Vainilla
-(2, 1, 250), -- Muffins Vainilla: 250g Harina
-(2, 7, 10), -- Muffins Vainilla: 10g Levadura
-(3, 3, 200), -- Galletas: 200g Mantequilla
-(3, 1, 400), -- Galletas: 400g Harina
-(4, 9, 300), -- Cheesecake: 300g Frutillas
-(4, 8, 200), -- Cheesecake: 200ml Crema Leche
-(5, 6, 150), -- Brownies: 150g Cacao
-(5, 1, 200), -- Brownies: 200g Harina
-(5, 3, 100); -- Brownies: 100g Mantequilla
+('Tarta de Chocolate Clásica', 15, 'Pastel', 60, 25.00, 'Tarta húmeda con glaseado de cacao', 6);
 
 INSERT INTO pedido (metodo_de_pago, estado, fecha_entrega, fecha_pedido, id_cliente) VALUES
-('Efectivo', 'Completado', '2025-12-01', '2025-11-28', 1), -- Cliente Ana Gómez
-('Tarjeta', 'En Preparación', '2025-12-05', '2025-12-02', 2), -- Cliente Pedro Martínez
-('Efectivo', 'Entregado', '2025-12-03', '2025-12-01', 3), -- Cliente Laura Rodríguez
-('Transferencia', 'Cancelado', '2025-12-06', '2025-12-02', 4); -- Cliente Carlos Sánchez
+('Efectivo', 'Completado', '2025-12-01', '2025-11-28', 1);
 
 INSERT INTO detalle_pedido (precio_unitario, cantidad, subtotal, id_producto, id_pedido, id_decoracion) VALUES
-(25.00, 1, 25.00, 1, 1, 1), -- Tarta de Chocolate (Pedido 1) con Decoración 1 (Fondant Temático)
-(3.50, 6, 21.00, 2, 1, NULL), -- 6 Muffins de Vainilla (Pedido 1) sin Decoración
-(12.00, 2, 24.00, 3, 2, NULL), -- 2 Docenas de Galletas (Pedido 2)
-(30.00, 1, 30.00, 4, 3, 2), -- Cheesecake de Frutilla (Pedido 3) con Decoración 2 (Flores Naturales)
-(4.50, 10, 45.00, 5, 4, NULL); -- 10 Brownies (Pedido 4)
+(25.00, 1, 25.00, 1, 1, 1);
+
